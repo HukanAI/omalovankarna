@@ -265,6 +265,7 @@
           <button
             role="radio"
             aria-checked={tool === t.id}
+            aria-label={t.label}
             class:on={tool === t.id}
             onclick={() => {
               tool = t.id;
