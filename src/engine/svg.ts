@@ -2,31 +2,58 @@ import type { Drawing, Stroke } from './types';
 
 const r = (v: number) => Math.round(v * 100) / 100;
 
+export interface CurveSink {
+  move(x: number, y: number): void;
+  line(x: number, y: number): void;
+  cubic(c1x: number, c1y: number, c2x: number, c2y: number, x: number, y: number): void;
+  close(): void;
+}
+
 /**
  * Lomenou čáru proloží Catmull–Rom splajnem převedeným na kubické
  * Bézierovy křivky – čára je plynulá i při velkém zvětšení nebo tisku.
  */
-export function curvePath(p: number[], closed: boolean, scale = 1, ox = 0, oy = 0): string {
+export function traceCurve(p: number[], closed: boolean, sink: CurveSink, scale = 1, ox = 0, oy = 0): void {
   const n = p.length / 2;
   const X = (i: number) => p[i * 2] * scale + ox;
   const Y = (i: number) => p[i * 2 + 1] * scale + oy;
-  if (n === 1) return `M${r(X(0))} ${r(Y(0))}h0`;
-  if (n === 2) return `M${r(X(0))} ${r(Y(0))}L${r(X(1))} ${r(Y(1))}`;
+  sink.move(X(0), Y(0));
+  if (n === 1) return sink.line(X(0), Y(0));
+  if (n === 2) return sink.line(X(1), Y(1));
   const idx = (i: number) => (closed ? (i + n) % n : Math.min(n - 1, Math.max(0, i)));
-  let d = `M${r(X(0))} ${r(Y(0))}`;
   const segs = closed ? n : n - 1;
   for (let i = 0; i < segs; i++) {
     const i0 = idx(i - 1);
     const i1 = idx(i);
     const i2 = idx(i + 1);
     const i3 = idx(i + 2);
-    const c1x = X(i1) + (X(i2) - X(i0)) / 6;
-    const c1y = Y(i1) + (Y(i2) - Y(i0)) / 6;
-    const c2x = X(i2) - (X(i3) - X(i1)) / 6;
-    const c2y = Y(i2) - (Y(i3) - Y(i1)) / 6;
-    d += `C${r(c1x)} ${r(c1y)} ${r(c2x)} ${r(c2y)} ${r(X(i2))} ${r(Y(i2))}`;
+    sink.cubic(
+      X(i1) + (X(i2) - X(i0)) / 6,
+      Y(i1) + (Y(i2) - Y(i0)) / 6,
+      X(i2) - (X(i3) - X(i1)) / 6,
+      Y(i2) - (Y(i3) - Y(i1)) / 6,
+      X(i2),
+      Y(i2),
+    );
   }
-  if (closed) d += 'Z';
+  if (closed) sink.close();
+}
+
+export function curvePath(p: number[], closed: boolean, scale = 1, ox = 0, oy = 0): string {
+  let d = '';
+  traceCurve(
+    p,
+    closed,
+    {
+      move: (x, y) => (d += `M${r(x)} ${r(y)}`),
+      line: (x, y) => (d += `L${r(x)} ${r(y)}`),
+      cubic: (a, b, c, e, x, y) => (d += `C${r(a)} ${r(b)} ${r(c)} ${r(e)} ${r(x)} ${r(y)}`),
+      close: () => (d += 'Z'),
+    },
+    scale,
+    ox,
+    oy,
+  );
   return d;
 }
 

@@ -1,0 +1,189 @@
+@import '@fontsource-variable/fraunces/soft.css';
+@import '@fontsource-variable/atkinson-hyperlegible-next/wght.css';
+
+/*
+ * Papírový atelier
+ * ————————————————
+ * Teplý papír, inkoust místo černé, barvy pastelek jen tam, kde něco znamenají.
+ */
+:root {
+  --paper: #f6f0e4;
+  --paper-2: #efe6d5;
+  --paper-3: #e4d7c1;
+  --sheet: #fffdf8;
+  --card: #fffdf8; /* povrchy ovládacích prvků */
+  --ink: #231f1b;
+  --ink-2: #5b5148;
+  --ink-3: #8d8277;
+  --rule: rgb(35 31 27 / 0.12);
+  --rule-strong: rgb(35 31 27 / 0.22);
+
+  --crayon: #e0582f; /* rumělková pastelka */
+  --crayon-soft: #f7d9cb;
+  --ochre: #e9a33b;
+  --sage: #6f9161;
+  --sky: #4f84b3;
+  --plum: #86558a;
+
+  --on-ink: #fbf6ec;
+  --focus: #4f84b3;
+  --scrim: rgb(35 31 27 / 0.42);
+
+  --shadow-1: 0 1px 0 rgb(35 31 27 / 0.06), 0 2px 6px -2px rgb(60 40 20 / 0.16);
+  --shadow-2: 0 1px 0 rgb(35 31 27 / 0.05), 0 14px 34px -12px rgb(70 45 20 / 0.32);
+  --shadow-sheet: 0 1px 1px rgb(35 31 27 / 0.08), 0 8px 24px -10px rgb(70 45 20 / 0.28),
+    0 32px 60px -30px rgb(70 45 20 / 0.3);
+
+  --font-display: 'Fraunces Variable', 'Iowan Old Style', Georgia, serif;
+  --font-ui: 'Atkinson Hyperlegible Next Variable', ui-sans-serif, system-ui, sans-serif;
+
+  --r-s: 10px;
+  --r-m: 16px;
+  --r-l: 24px;
+  --r-xl: 32px;
+
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+
+  /* Jemné zrno papíru (šum generovaný SVG filtrem, bez obrázků). */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .33 0 0 0 0 .25 0 0 0 0 .16 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --grain-opacity: 0.09;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --paper: #1b1815;
+    --paper-2: #24201c;
+    --paper-3: #312b25;
+    --sheet: #fbf7ef; /* list omalovánky zůstává papírový i v noci */
+    --card: #2c2722;
+    --ink: #f1e8da;
+    --ink-2: #c8bba9;
+    --ink-3: #978a7b;
+    --rule: rgb(241 232 218 / 0.12);
+    --rule-strong: rgb(241 232 218 / 0.22);
+    --crayon: #f0764c;
+    --crayon-soft: #4a2a1e;
+    --on-ink: #1b1815;
+    --scrim: rgb(0 0 0 / 0.55);
+    --shadow-1: 0 1px 0 rgb(0 0 0 / 0.3), 0 2px 6px -2px rgb(0 0 0 / 0.5);
+    --shadow-2: 0 14px 34px -12px rgb(0 0 0 / 0.7);
+    --shadow-sheet: 0 10px 30px -10px rgb(0 0 0 / 0.7), 0 30px 60px -30px rgb(0 0 0 / 0.6);
+    --grain-opacity: 0.05;
+    color-scheme: dark;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  background: var(--paper);
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 17px;
+  line-height: 1.45;
+  font-feature-settings: 'ss01';
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: var(--grain);
+  opacity: var(--grain-opacity);
+  mix-blend-mode: multiply;
+  z-index: 0;
+}
+
+#app {
+  position: relative;
+  z-index: 1;
+  min-height: 100dvh;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 560;
+  font-variation-settings: 'SOFT' 100, 'opsz' 72;
+  letter-spacing: -0.015em;
+  line-height: 1.08;
+  margin: 0;
+  text-wrap: balance;
+}
+
+p {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+:focus-visible {
+  outline: 2.5px solid var(--focus);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Přechody mezi obrazovkami (View Transitions API). */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 260ms;
+  animation-timing-function: var(--ease);
+}

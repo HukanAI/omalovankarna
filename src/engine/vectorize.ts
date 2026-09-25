@@ -53,7 +53,7 @@ export function vectorize(ink: Plane, opts: VectorizeOptions): VectorizeResult {
     // nakreslíme zvlášť jednou souvislou čarou, jinak by vznikly dvojité linky.
     const edgeDist = distanceTransform(boundary(opts.subject));
     const inner = 1.2 * pxScale;
-    const outer = 4.2 * pxScale;
+    const outer = 5.5 * pxScale;
     for (let i = 0; i < src.data.length; i++) {
       if (!opts.subject.data[i]) src.data[i] = 0;
       else if (edgeDist[i] < outer) src.data[i] *= Math.max(0, (edgeDist[i] - inner) / (outer - inner));
