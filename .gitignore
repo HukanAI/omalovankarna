@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.scratch/
+public/ort/
+test-results/
+playwright-report/
+*.local
+.DS_Store
