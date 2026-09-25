@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { ms } from '$lib/motion';
   import type { Snippet } from 'svelte';
   import { fade } from 'svelte/transition';
 
@@ -21,7 +22,7 @@
 
   function slideUp(_node: HTMLElement) {
     return {
-      duration: 320,
+      duration: ms(320),
       css: (t: number) => {
         const e = 1 - Math.pow(1 - t, 3);
         return `transform: translateY(${(1 - e) * 100}%)`;
@@ -55,7 +56,7 @@
 </script>
 
 {#if open}
-  <div class="scrim" transition:fade={{ duration: 200 }} onclick={close} aria-hidden="true"></div>
+  <div class="scrim" transition:fade={{ duration: ms(200) }} onclick={close} aria-hidden="true"></div>
   <div
     class="sheet"
     role="dialog"

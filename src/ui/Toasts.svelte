@@ -1,11 +1,12 @@
 <script lang="ts">
+  import { ms } from '$lib/motion';
   import { fly } from 'svelte/transition';
   import { dismiss, toasts } from '../app/toast.svelte';
 </script>
 
 <div class="stack" aria-live="polite">
   {#each toasts as t (t.id)}
-    <div class="toast" class:error={t.tone === 'error'} transition:fly={{ y: 24, duration: 240 }}>
+    <div class="toast" class:error={t.tone === 'error'} transition:fly={{ y: 24, duration: ms(240) }}>
       <span>{t.text}</span>
       {#if t.action}
         <button

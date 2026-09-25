@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { ms } from '$lib/motion';
   import { onDestroy, onMount } from 'svelte';
   import { flip } from 'svelte/animate';
   import { fade, scale } from 'svelte/transition';
@@ -153,7 +154,7 @@
   {#if pages === null}
     <div class="loading" aria-hidden="true"></div>
   {:else if pages.length === 0}
-    <section class="hero" in:fade={{ duration: 300 }}>
+    <section class="hero" in:fade={{ duration: ms(300) }}>
       <HeroArt />
       <h1>Z fotky omalovánka.</h1>
       <p class="lead">
@@ -168,7 +169,7 @@
       </ul>
     </section>
   {:else}
-    <section class="start" in:fade={{ duration: 250 }}>
+    <section class="start" in:fade={{ duration: ms(250) }}>
       <h1>Co nakreslíme dnes?</h1>
       <PhotoPicker onpick={pick} compact />
     </section>
@@ -185,7 +186,7 @@
       {/if}
       <ul class="grid">
         {#each pages as p (p.id)}
-          <li animate:flip={{ duration: 260 }} out:scale={{ duration: 180, start: 0.9 }}>
+          <li animate:flip={{ duration: ms(260) }} out:scale={{ duration: ms(180), start: 0.9 }}>
             <button
               class="card"
               class:picked={selected.has(p.id)}
@@ -212,7 +213,7 @@
   {/if}
 
   {#if showInstall && pages !== null && !selecting}
-    <aside class="install" transition:fade>
+    <aside class="install" transition:fade={{ duration: ms(200) }}>
       <div>
         <strong>Mějte Omalovánkárnu po ruce</strong>
         <span>Přidejte si ji na plochu – spustí se jako aplikace a poběží i offline.</span>
@@ -225,7 +226,7 @@
   {/if}
 
   {#if selecting}
-    <div class="selbar" transition:fade={{ duration: 150 }}>
+    <div class="selbar" transition:fade={{ duration: ms(150) }}>
       <Button variant="paper" icon="trash" disabled={!selected.size} onclick={removeSelected}>Smazat</Button>
       <Button variant="ink" icon="pdf" disabled={!selected.size} {busy} onclick={makeBook}>
         Vytvořit sešit{selected.size ? ` (${selected.size})` : ''}

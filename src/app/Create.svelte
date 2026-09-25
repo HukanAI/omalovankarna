@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { ms } from '$lib/motion';
   import { onDestroy, onMount } from 'svelte';
   import { fade, fly } from 'svelte/transition';
   import * as Comlink from 'comlink';
@@ -390,12 +391,12 @@
       {#if phase === 'loading'}
         <div class="placeholder" aria-label="Načítám fotku"></div>
       {:else if phase === 'done' && drawing}
-        <div class="drawing" class:dim={redrawing} in:fade={{ duration: 200 }}>
+        <div class="drawing" class:dim={redrawing} in:fade={{ duration: ms(200) }}>
           {#key drawing}
             <DrawingView {drawing} {reveal} {animate} colorLayer={coloredUrl} />
           {/key}
         </div>
-        {#if redrawing}<div class="mini-spinner" transition:fade></div>{/if}
+        {#if redrawing}<div class="mini-spinner" transition:fade={{ duration: ms(200) }}></div>{/if}
       {:else if photoUrl}
         <div
           class="photo"
@@ -407,13 +408,13 @@
           <img src={photoUrl} alt="Vybraná fotka" draggable="false" />
           <canvas bind:this={maskCanvas} class="mask" class:hidden={!subjectOn}></canvas>
           {#each points as p, i (i)}
-            <span class="pin" class:neg={!p.positive} style:left="{p.x * 100}%" style:top="{p.y * 100}%" in:fly={{ y: -8 }}>
+            <span class="pin" class:neg={!p.positive} style:left="{p.x * 100}%" style:top="{p.y * 100}%" in:fly={{ y: -8, duration: ms(200) }}>
               <Icon name={p.positive ? 'plus' : 'minus'} size={14} stroke={3} />
             </span>
           {/each}
-          {#if selecting}<div class="scan" transition:fade></div>{/if}
+          {#if selecting}<div class="scan" transition:fade={{ duration: ms(200) }}></div>{/if}
           {#if phase === 'drawing'}
-            <div class="drawing-overlay" transition:fade>
+            <div class="drawing-overlay" transition:fade={{ duration: ms(200) }}>
               <div class="sweep"></div>
             </div>
           {/if}
@@ -424,7 +425,7 @@
 
   <section class="panel">
     {#if phase === 'compose'}
-      <div class="block" in:fade={{ duration: 180 }}>
+      <div class="block" in:fade={{ duration: ms(180) }}>
         <h2>Pro koho bude?</h2>
         <LevelPicker bind:value={level} onchange={onLevel} />
       </div>
@@ -437,7 +438,7 @@
           onchange={(v) => setSubject(v)}
         />
         {#if subjectOn}
-          <div class="select-tools" transition:fade={{ duration: 150 }}>
+          <div class="select-tools" transition:fade={{ duration: ms(150) }}>
             {#if dlSam}
               <p class="note">Stahuji pomocníka na výběr · {Math.round(dlSam.ratio * 100)} % z {formatMB(dlSam.total)}</p>
             {:else}
@@ -459,14 +460,14 @@
         <p class="note center">Poprvé se stahuje kreslíř ({formatMB(dlLines.total)}). Potom už vše funguje i bez internetu.</p>
       {/if}
     {:else if phase === 'drawing'}
-      <div class="progress" in:fade>
+      <div class="progress" in:fade={{ duration: ms(200) }}>
         <p class="stage-text" aria-live="polite">{stageText}</p>
         {#if dlLines && stage === 'lines'}
           <div class="bar"><span style:width="{dlLines.ratio * 100}%"></span></div>
         {/if}
       </div>
     {:else if phase === 'done' && drawing}
-      <div class="block" in:fade={{ duration: 200 }}>
+      <div class="block" in:fade={{ duration: ms(200) }}>
         <Slider bind:value={detail} label="Množství detailů" left="Méně" right="Víc" oninput={onDetail} />
       </div>
       <div class="block">
@@ -481,7 +482,7 @@
         <Button variant="crayon" size="l" icon="palette" onclick={toColor}>Vybarvit</Button>
       </div>
     {:else if phase === 'error'}
-      <div class="error" in:fade>
+      <div class="error" in:fade={{ duration: ms(200) }}>
         <p>{errorText}</p>
         <div class="actions">
           <Button variant="paper" onclick={back}>Zpět</Button>

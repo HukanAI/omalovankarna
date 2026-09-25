@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { ms } from '$lib/motion';
   import { onDestroy, onMount } from 'svelte';
   import { fade } from 'svelte/transition';
   import { Painter } from '../color/painter';
@@ -250,10 +251,10 @@
     >
       <canvas bind:this={colorCanvas} class="layer"></canvas>
       <canvas bind:this={lineCanvas} class="layer lines"></canvas>
-      {#if !ready}<div class="loading" transition:fade></div>{/if}
+      {#if !ready}<div class="loading" transition:fade={{ duration: ms(200) }}></div>{/if}
     </div>
     {#if zoom > 1.05}
-      <button class="zoom-reset" onclick={resetZoom} transition:fade>Zobrazit celé</button>
+      <button class="zoom-reset" onclick={resetZoom} transition:fade={{ duration: ms(200) }}>Zobrazit celé</button>
     {/if}
   </div>
 
@@ -276,7 +277,7 @@
         {/each}
       </div>
       {#if tool !== 'bucket'}
-        <div class="sizes" role="radiogroup" aria-label="Tloušťka" transition:fade={{ duration: 120 }}>
+        <div class="sizes" role="radiogroup" aria-label="Tloušťka" transition:fade={{ duration: ms(120) }}>
           {#each sizes as _, i (i)}
             <button role="radio" aria-checked={sizeIdx === i} class:on={sizeIdx === i} onclick={() => (sizeIdx = i)} aria-label={['Tenká', 'Střední', 'Silná'][i]}>
               <span style:width="{6 + i * 7}px" style:height="{6 + i * 7}px"></span>
@@ -288,7 +289,7 @@
 
     <div class="palette-wrap">
       {#if showName}
-        <span class="color-name" transition:fade={{ duration: 150 }}>{PALETTE[colorIdx].name}</span>
+        <span class="color-name" transition:fade={{ duration: ms(150) }}>{PALETTE[colorIdx].name}</span>
       {/if}
       <div class="palette" role="radiogroup" aria-label="Barva">
         {#each PALETTE as c, i (c.hex)}
