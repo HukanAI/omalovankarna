@@ -7,7 +7,7 @@
   import type { Stage } from '../engine/studio';
   import type { Drawing, Stroke } from '../engine/types';
   import { downloadProgress, engine } from '$lib/engine.svelte';
-  import { deletePage, getPage, newId, putPage, type PageRecord } from '$lib/db';
+  import { deletePage, getPage, newId, putPage, trackSave, type PageRecord } from '$lib/db';
   import { haptic } from '$lib/device.svelte';
   import { formatMB } from '$lib/model-files';
   import { bitmapToBlob, fileToBitmap } from '$lib/photo';
@@ -257,7 +257,8 @@
       phase = 'done';
       if (res.fallback) toast('Kreslíř se nestáhl, použil jsem jednodušší metodu. Zkuste to později s internetem.');
       if (opts.animate) haptic('success');
-      scheduleSave(changed);
+      // První verzi uložíme hned, další úpravy posuvníkem s malým zpožděním.
+      scheduleSave(changed, record ? 500 : 0);
     } catch (e) {
       fail(e, 'Kreslení se nepovedlo. Může za to málo paměti nebo výpadek připojení při prvním stažení.');
     } finally {
@@ -294,9 +295,9 @@
   // ——— Ukládání do galerie ———
 
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
-  function scheduleSave(changed: boolean) {
+  function scheduleSave(changed: boolean, ms: number) {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => save(changed), 500);
+    saveTimer = setTimeout(() => void trackSave(save(changed)), ms);
   }
 
   async function save(changed: boolean) {

@@ -1,4 +1,5 @@
 /// <reference lib="webworker" />
+import { clientsClaim } from 'workbox-core';
 import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching';
 import { NavigationRoute, registerRoute } from 'workbox-routing';
 import { CacheFirst } from 'workbox-strategies';
@@ -33,6 +34,9 @@ self.addEventListener('fetch', (event) => {
 
 precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
+// Při první instalaci převezmeme i už otevřenou stránku – modely a běhové soubory
+// se tak nacachují hned při prvním kreslení a aplikace pak jede offline.
+clientsClaim();
 
 // ——— Navigace: aplikace z precache + hlavičky pro izolaci originu ———
 // Izolace (COOP/COEP) povolí vícevláknový WASM – na telefonu to je až několikanásobné zrychlení.
