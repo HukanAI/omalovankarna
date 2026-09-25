@@ -7,6 +7,9 @@ export const MODEL_FILES = {
 
 export type ModelKey = keyof typeof MODEL_FILES;
 
+/** Klíče ukazatele stahování: modely + běhové prostředí ONNX Runtime. */
+export type DownloadKey = ModelKey | 'runtime';
+
 export const MODEL_CACHE = 'omalovankarna-models-v1';
 
 export function modelUrl(key: ModelKey, base: string): string {

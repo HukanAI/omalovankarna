@@ -1,13 +1,18 @@
 import { defaultClientConditions, defineConfig, type Plugin } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { VitePWA } from 'vite-plugin-pwa';
-import { copyFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const BASE = process.env.BASE_PATH ?? '/omalovankarna/';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const pkg = JSON.parse(readFileSync(`${root}package.json`, 'utf8')) as { version: string };
 const version = `${pkg.version} (${new Date().toISOString().slice(0, 10)})`;
+const ortSize = (f: string) => statSync(`${root}node_modules/onnxruntime-web/dist/${f}`).size;
+const ortSizes = {
+  wasm: ortSize('ort-wasm-simd-threaded.wasm'),
+  webgpu: ortSize('ort-wasm-simd-threaded.asyncify.wasm'),
+};
 
 /** Běhové soubory ONNX Runtime (WASM) se servírují z vlastního originu. */
 function ortRuntime(): Plugin {
@@ -84,7 +89,7 @@ export default defineConfig({
       },
     }),
   ],
-  define: { __APP_VERSION__: JSON.stringify(version) },
+  define: { __APP_VERSION__: JSON.stringify(version), __ORT_SIZES__: JSON.stringify(ortSizes) },
   resolve: {
     alias: { $lib: `${root}src/lib` },
     // Varianta ORT bez přibaleného WASM – binárky se berou z public/ort (viz ortRuntime).

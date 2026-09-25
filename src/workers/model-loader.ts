@@ -1,6 +1,6 @@
-import { MODEL_CACHE, MODEL_FILES, modelUrl, type ModelKey } from '../lib/model-files';
+import { MODEL_CACHE, MODEL_FILES, modelUrl, type DownloadKey, type ModelKey } from '../lib/model-files';
 
-export type ProgressFn = (key: ModelKey, loaded: number, total: number) => void;
+export type ProgressFn = (key: DownloadKey, loaded: number, total: number) => void;
 
 const base = new URL(import.meta.env.BASE_URL, self.location.origin).href;
 
@@ -56,4 +56,27 @@ export async function loadModel(key: ModelKey, onProgress?: ProgressFn): Promise
     // Plné úložiště – model poběží, jen se příště stáhne znovu.
   }
   return buf;
+}
+
+/**
+ * Stáhne binárku ONNX Runtime s průběhem. Odpověď si uloží service worker
+ * (CacheFirst), takže následné načtení samotným ORT je okamžité a funguje offline.
+ */
+export async function prefetchRuntime(url: string, total: number, onProgress?: ProgressFn): Promise<void> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok || !res.body) return;
+    const reader = res.body.getReader();
+    let loaded = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      loaded += value.length;
+      onProgress?.('runtime', Math.min(loaded, total), total);
+    }
+    onProgress?.('runtime', total, total);
+  } catch {
+    // Nevadí – ORT si soubor stáhne sám.
+    onProgress?.('runtime', total, total);
+  }
 }

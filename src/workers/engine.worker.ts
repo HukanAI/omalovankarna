@@ -4,7 +4,7 @@ import type { InferenceSession, Tensor } from 'onnxruntime-web';
 import { Studio, type DrawOptions, type ModelProvider, type Runner, type Stage, type TensorOut } from '../engine/studio';
 import type { SamPoint, TensorIn } from '../engine/models';
 import type { RGBA } from '../engine/types';
-import { isCached, loadModel, type ProgressFn } from './model-loader';
+import { isCached, loadModel, prefetchRuntime, type ProgressFn } from './model-loader';
 import type { ModelKey } from '../lib/model-files';
 
 type Ort = typeof import('onnxruntime-web');
@@ -35,6 +35,7 @@ function loadOrt() {
     const dir = new URL(`${import.meta.env.BASE_URL}ort/`, self.location.origin).href;
     const name = gpu ? 'ort-wasm-simd-threaded.asyncify' : 'ort-wasm-simd-threaded';
     ort.env.wasm.wasmPaths = { mjs: `${dir}${name}.mjs`, wasm: `${dir}${name}.wasm` };
+    await prefetchRuntime(`${dir}${name}.wasm`, gpu ? __ORT_SIZES__.webgpu : __ORT_SIZES__.wasm, progress);
     ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 2) : 1;
     ort.env.logLevel = 'error';
     const backend: Backend = gpu ? 'webgpu' : 'wasm';

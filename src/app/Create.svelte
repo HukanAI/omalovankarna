@@ -55,7 +55,7 @@
   let colored = $state<Blob | null>(null);
   let exportOpen = $state(false);
 
-  const dlLines = $derived(downloadProgress(['lineart']));
+  const dlLines = $derived(downloadProgress(['runtime', 'lineart']));
   const dlSam = $derived(downloadProgress(['samEncoder', 'samDecoder']));
 
   function readLevel(): Level {
@@ -350,7 +350,7 @@
   }
 
   const stageText = $derived.by(() => {
-    if (stage === 'lines' && dlLines) return `Stahuji kreslíře · ${Math.round(dlLines.ratio * 100)} % z ${formatMB(dlLines.total)}`;
+    if (dlLines) return `Stahuji kreslíře · ${Math.round(dlLines.ratio * 100)} % z ${formatMB(dlLines.total)}`;
     if (stage === 'prepare') return 'Připravuji papír…';
     if (stage === 'lines') return 'Kreslím obrysy…';
     if (stage === 'clean') return 'Čistím a obtahuji čáry…';
@@ -462,7 +462,7 @@
     {:else if phase === 'drawing'}
       <div class="progress" in:fade={{ duration: ms(200) }}>
         <p class="stage-text" aria-live="polite">{stageText}</p>
-        {#if dlLines && stage === 'lines'}
+        {#if dlLines}
           <div class="bar"><span style:width="{dlLines.ratio * 100}%"></span></div>
         {/if}
       </div>

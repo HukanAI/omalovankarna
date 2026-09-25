@@ -79,7 +79,14 @@ test('vybarvení kyblíkem a export PDF', async ({ page }) => {
   const canvas = page.locator('.viewport canvas').first();
   await expect(canvas).toBeVisible();
   const b = (await canvas.boundingBox())!;
-  await page.mouse.click(b.x + b.width * 0.05, b.y + b.height * 0.05);
+  // Několik klepnutí – některé místo může být malá uzavřená plocha u okraje.
+  for (const [fx, fy] of [
+    [0.05, 0.05],
+    [0.95, 0.5],
+    [0.5, 0.45],
+  ]) {
+    await page.mouse.click(b.x + b.width * fx, b.y + b.height * fy);
+  }
   const painted = await canvas.evaluate((c: HTMLCanvasElement) => {
     const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
     let n = 0;
