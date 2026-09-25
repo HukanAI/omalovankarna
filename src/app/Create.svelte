@@ -38,8 +38,9 @@
 
   let level = $state<Level>(readLevel());
   let detail = $state(0.5);
+  let style = $state<'pen' | 'ink'>(readStyle());
 
-  let subjectOn = $state(false);
+  let subjectOn = $state(readSubjectPref());
   let points = $state<SamPoint[]>([]);
   let tapMode = $state<'add' | 'remove'>('add');
   let selecting = $state(false);
@@ -57,6 +58,34 @@
 
   const dlLines = $derived(downloadProgress(['runtime', 'lineart']));
   const dlSam = $derived(downloadProgress(['samEncoder', 'samDecoder']));
+
+  function readSubjectPref(): boolean {
+    try {
+      return localStorage.getItem('subject') !== '0';
+    } catch {
+      return true;
+    }
+  }
+
+  function readStyle(): 'pen' | 'ink' {
+    try {
+      return localStorage.getItem('style') === 'ink' ? 'ink' : 'pen';
+    } catch {
+      return 'pen';
+    }
+  }
+
+  function onStyle(v: 'pen' | 'ink') {
+    if (v === style) return;
+    style = v;
+    haptic();
+    try {
+      localStorage.setItem('style', v);
+    } catch {
+      /* nevadí */
+    }
+    void draw({ animate: false, quiet: true });
+  }
 
   function readLevel(): Level {
     try {
@@ -91,6 +120,8 @@
     aspect = photoAspect = size.w / size.h;
     imageInWorker = true;
     phase = 'compose';
+    // Hlavní postavu zkusíme najít rovnou – bez ní bývá kresba přeplněná pozadím.
+    if (subjectOn) void runSelection([], true);
     // Kreslíře připravíme hned, ať je hotový, než si uživatel vybere úroveň.
     engine()
       .warmup('lineart')
@@ -108,6 +139,7 @@
     probe.close();
     level = rec.level;
     detail = rec.detail;
+    style = rec.style ?? 'ink';
     subjectOn = !!rec.selection;
     points = rec.selection ?? [];
     colored = rec.colored;
@@ -137,6 +169,11 @@
   async function setSubject(on: boolean) {
     subjectOn = on;
     haptic();
+    try {
+      localStorage.setItem('subject', on ? '1' : '0');
+    } catch {
+      /* nevadí */
+    }
     if (!on) {
       points = [];
       clearMask();
@@ -146,16 +183,25 @@
     await runSelection([]);
   }
 
-  async function runSelection(pts: SamPoint[]) {
+  async function runSelection(pts: SamPoint[], automatic = false) {
     selecting = true;
     try {
       await ensureImage();
       const res = await engine().select(pts);
+      if (automatic && !res.confident) {
+        // Krajina, interiér… – kreslí se celá fotka.
+        subjectOn = false;
+        points = [];
+        clearMask();
+        await engine().clearSelection();
+        toast('Na fotce není jasná hlavní postava, nakreslím ji celou.');
+        return;
+      }
       paintMask(res);
       if (res.coverage < 0.004) toast('Tady jsem nic nenašel. Klepněte přímo na postavu.');
     } catch (e) {
       console.error(e);
-      toast('Výběr postavy se nepovedl. Zkontrolujte připojení a zkuste to znovu.', { tone: 'error' });
+      if (!automatic) toast('Výběr postavy se nepovedl. Zkontrolujte připojení a zkuste to znovu.', { tone: 'error' });
       subjectOn = false;
     } finally {
       selecting = false;
@@ -243,7 +289,7 @@
     try {
       await ensureImage();
       const res = await engine().draw(
-        { level, detail, subject: subjectOn },
+        { level, detail, subject: subjectOn, style },
         Comlink.proxy((s: Stage) => (stage = s)),
       );
       if (!res.drawing.rings.length && !res.drawing.strokes.length) {
@@ -318,6 +364,7 @@
       updatedAt: now,
       level,
       detail,
+      style,
       selection: subjectOn ? ($state.snapshot(points) as SamPoint[]) : null,
       drawing: snapshot,
       photo: photoBlob,
@@ -472,6 +519,17 @@
       </div>
       <div class="block">
         <LevelPicker value={level} compact onchange={onLevel} />
+      </div>
+      <div class="styles" role="radiogroup" aria-label="Styl čar">
+        <span class="styles-label">Čára</span>
+        <button role="radio" aria-checked={style === 'pen'} class:on={style === 'pen'} onclick={() => onStyle('pen')}>
+          <svg viewBox="0 0 40 16" aria-hidden="true"><path d="M3 11 C12 3 26 13 37 5" /></svg>
+          Pero
+        </button>
+        <button role="radio" aria-checked={style === 'ink'} class:on={style === 'ink'} onclick={() => onStyle('ink')}>
+          <svg viewBox="0 0 40 16" aria-hidden="true"><path class="ink-glyph" d="M3 11 C12 3 26 13 37 5" /></svg>
+          Tuš
+        </button>
       </div>
       <button class="link" onclick={editSelection}>
         <Icon name="subject" size={20} />
@@ -735,6 +793,43 @@
     background: var(--ink);
     border-radius: inherit;
     transition: width 200ms linear;
+  }
+  .styles {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .styles-label {
+    font-weight: 650;
+    margin-right: auto;
+  }
+  .styles button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 40px;
+    padding: 0 12px;
+    border-radius: 999px;
+    border: 1.5px solid var(--rule-strong);
+    background: var(--card);
+    font-weight: 650;
+    font-size: 15px;
+  }
+  .styles button.on {
+    border-color: var(--ink);
+    background: var(--crayon-soft);
+  }
+  .styles svg {
+    width: 30px;
+    height: 12px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.4;
+    stroke-linecap: round;
+  }
+  .styles .ink-glyph {
+    stroke-width: 1.4;
+    filter: drop-shadow(0 0 0.6px currentColor);
   }
   .link {
     display: inline-flex;

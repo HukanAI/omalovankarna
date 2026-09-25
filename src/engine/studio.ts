@@ -41,6 +41,7 @@ export interface DrawOptions {
   detail: number;
   /** Použít vybraný objekt (bez pozadí) a přiblížit na něj. */
   subject: boolean;
+  style?: 'pen' | 'ink';
 }
 
 export interface DrawResult extends VectorizeResult {
@@ -89,7 +90,7 @@ export class Studio {
    * zip bundy), a která není pozadím (nedotýká se okrajů).
    * Vrací masku v rozlišení pracovního obrázku.
    */
-  async select(points: SamPoint[]): Promise<{ mask: Mask; score: number; coverage: number }> {
+  async select(points: SamPoint[]): Promise<{ mask: Mask; score: number; coverage: number; confident: boolean }> {
     if (!this.img) throw new Error('Není nahraná fotka.');
     await this.prepareSelection();
     const { decoder } = await this.models.sam();
@@ -106,6 +107,8 @@ export class Studio {
     };
 
     let chosen: Awaited<ReturnType<typeof decode>>;
+    // U ručních bodů rozhoduje uživatel; automatika musí mít shodu kandidátů.
+    let confident = true;
     if (points.length) {
       chosen = await decode(points);
     } else {
@@ -140,12 +143,14 @@ export class Studio {
         }
       });
       chosen = outs[best];
+      // Aspoň dva další kandidáti se musí s vítězem zhruba shodovat.
+      confident = bestScore - 0.5 * small[best].score - Math.min(cov[best], 0.3) >= 1.1;
     }
     const res = samMask(chosen.pred, chosen.iou, this.samPrep!, img.w, img.h, chosen.single);
     this.mask = res.mask;
     // Změna výběru znehodnotí kresby, které s ním počítaly.
     for (const key of [...this.inkCache.keys()]) if (key.endsWith(':s')) this.inkCache.delete(key);
-    return { ...res, coverage: count(res.mask) / (img.w * img.h) };
+    return { ...res, coverage: count(res.mask) / (img.w * img.h), confident };
   }
 
   clearSelection(): void {
@@ -166,8 +171,10 @@ export class Studio {
       const { w, h } = lineartSize(crop.w, crop.h, preset.size);
       let small = resizeRGBA(crop, w, h);
       if (preset.abstract) {
-        const r = Math.max(1, Math.round(preset.abstract.radius * Math.max(w, h)));
-        small = abstractImage(small, r, preset.abstract.eps, preset.abstract.iterations);
+        // Po přiblížení na postavu jsou textury (srst, látka) větší – vyhladíme víc.
+        const k = useSubject ? 1.5 : 1;
+        const r = Math.max(1, Math.round(preset.abstract.radius * k * Math.max(w, h)));
+        small = abstractImage(small, r, preset.abstract.eps * k, preset.abstract.iterations);
       }
       onStage?.('lines');
       let ink: Plane;
@@ -187,7 +194,7 @@ export class Studio {
       this.inkCache.set(key, cached);
     }
     onStage?.('clean');
-    const result = vectorize(cached.ink, { level: opts.level, detail: opts.detail, subject: cached.subject });
+    const result = vectorize(cached.ink, { level: opts.level, detail: opts.detail, subject: cached.subject, style: opts.style });
     return { ...result, box: cached.box, fallback: cached.fallback };
   }
 }

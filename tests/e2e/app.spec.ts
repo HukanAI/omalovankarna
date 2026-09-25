@@ -13,8 +13,8 @@ async function pickPhoto(page: Page, name: string) {
 }
 
 async function waitForDrawing(page: Page) {
-  const ink = page.locator('svg.drawing .ink > path').first();
-  await expect(ink).toHaveAttribute('d', /M/, { timeout: 90_000 });
+  const lines = page.locator('svg.drawing .ink g path').first();
+  await expect(lines).toHaveAttribute('d', /M/, { timeout: 90_000 });
   await expect(page.getByRole('button', { name: 'Vybarvit' })).toBeVisible();
 }
 
@@ -43,10 +43,11 @@ test('fotka → omalovánka → galerie', async ({ page }) => {
   await waitForDrawing(page);
 
   // Posuvník detailů překreslí bez nového běhu sítě.
-  const before = await page.locator('svg.drawing .ink > path').first().getAttribute('d');
+  const inkHtml = () => page.locator('svg.drawing .ink').first().innerHTML();
+  const before = await inkHtml();
   await page.getByRole('slider', { name: 'Množství detailů' }).fill('0.95');
   await expect
-    .poll(async () => page.locator('svg.drawing .ink > path').first().getAttribute('d'))
+    .poll(inkHtml)
     .not.toBe(before);
 
   await page.getByRole('button', { name: 'Zpět' }).click();
@@ -57,7 +58,8 @@ test('fotka → omalovánka → galerie', async ({ page }) => {
 test('jen hlavní postava: kůň bez krajiny', async ({ page }) => {
   await page.goto('./');
   await pickPhoto(page, 'horse');
-  await page.getByText('Jen hlavní postava').click();
+  // Výběr hlavní postavy je zapnutý výchozím nastavením a proběhne sám.
+  await expect(page.getByRole('switch')).toBeChecked();
   await expect(page.getByRole('radio', { name: 'Přidat' })).toBeVisible({ timeout: 90_000 });
   await page.getByRole('button', { name: 'Nakreslit' }).click();
   await waitForDrawing(page);
@@ -75,6 +77,7 @@ test('vybarvení kyblíkem a export PDF', async ({ page }) => {
   await page.getByRole('button', { name: 'Vybarvit' }).click();
   await expect(page.getByRole('heading', { name: 'Vybarvování' })).toBeVisible();
   await expect(page.locator('.viewport .loading')).toHaveCount(0);
+  await page.waitForTimeout(500); // během přechodu obrazovek prohlížeč dotyky nedoručí
 
   const canvas = page.locator('.viewport canvas').first();
   await expect(canvas).toBeVisible();
@@ -126,4 +129,11 @@ test('funguje bez internetu', async ({ page, context }) => {
   await page.getByRole('button', { name: 'Nakreslit' }).click();
   await waitForDrawing(page);
   await context.setOffline(false);
+});
+
+test('u fotky bez jasné postavy se kreslí celá', async ({ page }) => {
+  await page.goto('./');
+  await pickPhoto(page, 'house');
+  await expect(page.getByText('nakreslím ji celou')).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByRole('switch')).not.toBeChecked();
 });

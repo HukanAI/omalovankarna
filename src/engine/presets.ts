@@ -26,6 +26,8 @@ export interface LevelPreset {
   holeSize: number;
   /** Úroveň izokřivky obrysu inkoustu – nižší = silnější čáry. */
   iso: number;
+  /** Síla vyhlazení perových tahů (sigma v px předvolené velikosti). */
+  penSmooth: number;
 }
 
 export const LEVELS: Record<Level, LevelPreset> = {
@@ -46,6 +48,7 @@ export const LEVELS: Record<Level, LevelPreset> = {
     minStrength: 0.34,
     holeSize: 0.02,
     iso: 0.22,
+    penSmooth: 3.2,
   },
   // Školáci: víc detailů, stále zřetelně uzavřené plochy.
   skolaci: {
@@ -64,6 +67,7 @@ export const LEVELS: Record<Level, LevelPreset> = {
     minStrength: 0.3,
     holeSize: 0.012,
     iso: 0.3,
+    penSmooth: 2.4,
   },
   // Pro zkušené: jemná kresba včetně textur.
   zkuseni: {
@@ -82,6 +86,7 @@ export const LEVELS: Record<Level, LevelPreset> = {
     minStrength: 0.26,
     holeSize: 0.008,
     iso: 0.36,
+    penSmooth: 1.8,
   },
 };
 

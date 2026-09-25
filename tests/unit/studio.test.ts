@@ -66,7 +66,7 @@ describe.runIf(haveModels)('Studio se skutečnými modely', () => {
     studio.setImage(await photo('cat'));
     const res = await studio.draw({ level: 'mali', detail: 0.5, subject: false });
     expect(res.fallback).toBe(false);
-    expect(res.drawing.rings.length).toBeGreaterThan(5);
+    expect(res.drawing.strokes.length).toBeGreaterThan(5);
     const { closed, inkRatio } = fillableRegions(res.drawing);
     expect(inkRatio).toBeGreaterThan(0.01);
     expect(inkRatio).toBeLessThan(0.2);
@@ -76,7 +76,7 @@ describe.runIf(haveModels)('Studio se skutečnými modely', () => {
   it('vyšší úroveň znamená víc detailů', async () => {
     const a = await studio.draw({ level: 'mali', detail: 0.5, subject: false });
     const b = await studio.draw({ level: 'zkuseni', detail: 0.5, subject: false });
-    expect(b.drawing.rings.length).toBeGreaterThan(a.drawing.rings.length);
+    expect(b.drawing.strokes.length).toBeGreaterThan(a.drawing.strokes.length);
   });
 
   it('posuvník detailu mění množství čar bez nového běhu sítě', async () => {

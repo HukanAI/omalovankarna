@@ -1,9 +1,9 @@
-import { bridgeGaps, graphToPolys, simplify, smooth } from './strokes';
-import { mergeThroughNodes, pruneSpurs, removeShortGroups, removeWeak, traceSkeleton, type Graph } from './graph';
+import { bridgeGaps, graphToPolys, polyLength, resample, simplify, smooth, smoothGaussian, type Poly } from './strokes';
+import { mergeThroughNodes, pruneSpurs, removeShortGroups, removeWeak, restoreConnectors, traceSkeleton, type Graph } from './graph';
 import { boundary, components, fillHoles, hysteresis, removeSmall } from './mask';
 import { blur, distanceTransform, quantile } from './raster';
 import { isoContours, ringArea } from './contours';
-import { LEVELS, type Level } from './presets';
+import { LEVELS, PRINT_LONG_MM, type Level } from './presets';
 import { thin } from './thin';
 import type { Drawing, Mask, Plane, Stroke } from './types';
 
@@ -13,6 +13,11 @@ export interface VectorizeOptions {
   detail?: number;
   /** Maska hlavního objektu ve stejném rozlišení jako `ink`. */
   subject?: Mask | null;
+  /**
+   * 'pen' = souvislé tahy jednotné tloušťky (jako tištěné omalovánky),
+   * 'ink' = obrysy inkoustu s proměnnou tloušťkou (jako kresba tuší).
+   */
+  style?: 'pen' | 'ink';
 }
 
 export interface VectorizeResult {
@@ -70,6 +75,7 @@ export function vectorize(ink: Plane, opts: VectorizeOptions): VectorizeResult {
   removeWeak(graph, src, preset.minStrength * (1 + thrShift), 0.12 * L);
   pruneSpurs(graph, preset.spur * lenFactor * L, 2);
   removeShortGroups(graph, preset.minGroup * lenFactor * L);
+  restoreConnectors(graph, 0.08 * L);
   mergeThroughNodes(graph);
 
   // Typická tloušťka čáry – použije se pro dotažené mezery.
@@ -78,6 +84,10 @@ export function vectorize(ink: Plane, opts: VectorizeOptions): VectorizeResult {
   // ——— Drobné výrazné tvary (oči, čumáček, knoflíky) ———
   // Mají krátkou kostru, takže by je filtr tahů smazal – přitom nesou výraz.
   const features = findFeatures(bin, src, L);
+
+  if ((opts.style ?? 'pen') === 'pen') {
+    return penDrawing(graph, features, src, opts, preset, w, h, L, pxScale);
+  }
 
   // ——— Inkoust jen v okolí ponechaných tahů → hladké obrysy ———
   const kept = rasterizeGraph(graph, w, h);
@@ -126,7 +136,8 @@ export function vectorize(ink: Plane, opts: VectorizeOptions): VectorizeResult {
       const pts = simplify(smooth(p.pts, p.closed, preset.smoothIterations), p.closed, 0.5 * pxScale);
       return { pts: round(pts.map((v) => v + HALF)), closed: p.closed, weight: 1 };
     })
-    .filter((s) => s.pts.length >= 4);
+    .filter((s) => s.pts.length >= 4)
+    .concat(strokes.filter((s) => s.weight > 1));
   reveal.sort((a, b) => topOf(a) - topOf(b));
 
   return {
@@ -134,6 +145,150 @@ export function vectorize(ink: Plane, opts: VectorizeOptions): VectorizeResult {
     reveal,
     stats: { rings: rings.length, strokes: strokes.length, bridges: bridges.length },
   };
+}
+
+/**
+ * Perový styl: každý tah je souvislá, hladká čára jednotné tloušťky.
+ * Kostra se převzorkuje a vyhladí Gaussovým filtrem podél tahu, takže
+ * zmizí pixelové zuby i drobné roztřesení, a konce se dotáhnou k sousedním čarám.
+ */
+function penDrawing(
+  graph: Graph,
+  features: Uint8Array,
+  src: Plane,
+  opts: VectorizeOptions,
+  preset: (typeof LEVELS)[Level],
+  w: number,
+  h: number,
+  L: number,
+  pxScale: number,
+): VectorizeResult {
+  const lineWidth = (preset.lineMm * L) / PRINT_LONG_MM;
+  const step = 1.5 * pxScale;
+  let polys: Poly[] = graphToPolys(graph);
+
+  // Obrys hlavního objektu nahrazuje čáry sítě, které vedou těsně podél něj
+  // (jinak vzniká dvojitý obrys). Vnitřní čáry se k němu pak dotáhnou.
+  let outline: Poly[] = [];
+  if (opts.subject) {
+    outline = subjectOutline(opts.subject, w, h, L, pxScale, step);
+    const edgeDist = distanceTransform(boundary(opts.subject));
+    polys = trimNear(polys, edgeDist, w, h, 7.5 * pxScale, preset.spur * L);
+    // Krátké úlomky, které jen kopírují obrys o kus dál, by vytvořily úzké
+    // kapsy, které se špatně vybarvují.
+    polys = polys.filter((p) => !hugsOutline(p, edgeDist, w, h, 16 * pxScale, 0.18 * L));
+  }
+
+  const all = polys.concat(outline);
+  const bridges = bridgeGaps(all, preset.gap * L, w, h);
+
+  // Vyhlazení v bodech podél tahu: silnější pro menší děti (klidnější linky).
+  const sigma = (preset.penSmooth * pxScale) / step;
+  const strokes: Stroke[] = [];
+  for (const p of polys) {
+    const even = resample(p.pts, p.closed, step);
+    const sm = smoothGaussian(even, p.closed, sigma);
+    const pts = simplify(sm, p.closed, 0.18 * pxScale);
+    if (pts.length < 4) continue;
+    strokes.push({ pts: round(pts.map((v) => v + HALF)), closed: p.closed, weight: 1 });
+  }
+  for (const o of outline) {
+    const pts = simplify(o.pts, o.closed, 0.2 * pxScale);
+    if (pts.length >= 4) strokes.push({ pts: round(pts.map((v) => v + HALF)), closed: o.closed, weight: 1.35 });
+  }
+
+  // Oči, čumáčky a podobně zůstávají vyplněné.
+  const rings: number[][] = [];
+  const featureField = new Float32Array(w * h);
+  let anyFeature = false;
+  for (let i = 0; i < features.length; i++) {
+    if (features[i]) {
+      featureField[i] = src.data[i];
+      anyFeature = true;
+    }
+  }
+  if (anyFeature) {
+    const f = blur({ w, h, data: featureField }, 0.9 * pxScale);
+    for (const raw of isoContours(f, 0.35)) {
+      if (Math.abs(ringArea(raw)) < (1.2 * pxScale) ** 2 * Math.PI) continue;
+      const simp = simplify(smoothGaussian(resample(raw, true, step), true, 1.2), true, 0.15 * pxScale);
+      if (simp.length >= 6) rings.push(round(simp));
+    }
+  }
+
+  const reveal = strokes.slice().sort((a, b) => topOf(a) - topOf(b));
+  return {
+    drawing: { w, h, rings, strokes, lineWidth },
+    reveal,
+    stats: { rings: rings.length, strokes: strokes.length, bridges: bridges.length },
+  };
+}
+
+function hugsOutline(p: Poly, edgeDist: Float32Array, w: number, h: number, dist: number, maxLen: number): boolean {
+  if (p.closed || polyLength(p.pts) > maxLen) return false;
+  let near = 0;
+  const n = p.pts.length / 2;
+  for (let i = 0; i < n; i++) {
+    const x = Math.min(w - 1, Math.max(0, Math.round(p.pts[i * 2])));
+    const y = Math.min(h - 1, Math.max(0, Math.round(p.pts[i * 2 + 1])));
+    if (edgeDist[y * w + x] < dist) near++;
+  }
+  return near / n > 0.7;
+}
+
+/**
+ * Odstraní části tahů, které leží blíž než `dist` k obrysu objektu.
+ * Zbylé kusy kratší než `minLen` zahodí; nové konce jsou volné (dotáhnou se).
+ */
+function trimNear(polys: Poly[], edgeDist: Float32Array, w: number, h: number, dist: number, minLen: number): Poly[] {
+  const out: Poly[] = [];
+  const near = (x: number, y: number) =>
+    edgeDist[Math.min(h - 1, Math.max(0, Math.round(y))) * w + Math.min(w - 1, Math.max(0, Math.round(x)))] < dist;
+  for (const p of polys) {
+    const n = p.pts.length / 2;
+    let run: number[] = [];
+    let runStart = 0;
+    const flush = (endIdx: number) => {
+      if (run.length >= 4 && polyLength(run) >= minLen) {
+        const whole = runStart === 0 && endIdx === n - 1;
+        out.push({
+          pts: run,
+          closed: whole && p.closed,
+          freeStart: runStart === 0 ? p.freeStart : true,
+          freeEnd: endIdx === n - 1 ? p.freeEnd : true,
+        });
+      }
+      run = [];
+    };
+    for (let i = 0; i < n; i++) {
+      const x = p.pts[i * 2];
+      const y = p.pts[i * 2 + 1];
+      if (near(x, y)) {
+        if (run.length) flush(i - 1);
+        runStart = i + 1;
+      } else {
+        if (!run.length) runStart = i;
+        run.push(x, y);
+      }
+    }
+    if (run.length) flush(n - 1);
+  }
+  return out;
+}
+
+/** Obrys hlavního objektu jako souvislá čára (souřadnice pixelů, bez posunu +0,5). */
+function subjectOutline(subject: Mask, w: number, h: number, L: number, pxScale: number, step: number): Poly[] {
+  const out: Poly[] = [];
+  const soft = blur(maskToPlane(subject), 1.4 * pxScale);
+  for (const ring of isoContours(soft, 0.5)) {
+    if (Math.abs(ringArea(ring)) < (0.02 * L) ** 2) continue;
+    const even = smoothGaussian(resample(ring, true, step), true, (2.2 * pxScale) / step);
+    for (const part of splitAtBorder(even, w, h)) {
+      if (part.pts.length < 4) continue;
+      out.push({ pts: part.pts.map((v) => v - HALF), closed: part.closed, freeStart: false, freeEnd: false });
+    }
+  }
+  return out;
 }
 
 /**

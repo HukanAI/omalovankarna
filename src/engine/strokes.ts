@@ -238,3 +238,72 @@ export function simplify(pts: number[], closed: boolean, eps: number): number[] 
 }
 
 export { polyLength };
+
+/** Převzorkuje lomenou čáru na body ve stejné vzdálenosti `step`. */
+export function resample(pts: number[], closed: boolean, step: number): number[] {
+  const src = closed ? pts.concat(pts[0], pts[1]) : pts;
+  const n = src.length / 2;
+  if (n < 2) return pts.slice();
+  const out = [src[0], src[1]];
+  let carry = 0;
+  for (let i = 1; i < n; i++) {
+    const ax = src[i * 2 - 2];
+    const ay = src[i * 2 - 1];
+    const bx = src[i * 2];
+    const by = src[i * 2 + 1];
+    const seg = Math.hypot(bx - ax, by - ay);
+    let t = step - carry;
+    while (t <= seg) {
+      out.push(ax + ((bx - ax) * t) / seg, ay + ((by - ay) * t) / seg);
+      t += step;
+    }
+    carry = seg - (t - step);
+  }
+  if (!closed) {
+    const lx = src[src.length - 2];
+    const ly = src[src.length - 1];
+    if (Math.hypot(out[out.length - 2] - lx, out[out.length - 1] - ly) > step * 0.3) out.push(lx, ly);
+    else {
+      out[out.length - 2] = lx;
+      out[out.length - 1] = ly;
+    }
+  } else if (out.length >= 4 && Math.hypot(out[out.length - 2] - out[0], out[out.length - 1] - out[1]) < step * 0.5) {
+    out.length -= 2;
+  }
+  return out;
+}
+
+/**
+ * Gaussovské vyhlazení podél tahu (body musí být rovnoměrně rozložené).
+ * Konce otevřeného tahu zůstávají na místě, aby navazovaly na křižovatky.
+ */
+export function smoothGaussian(pts: number[], closed: boolean, sigmaPts: number): number[] {
+  const n = pts.length / 2;
+  if (n < 3 || sigmaPts <= 0) return pts.slice();
+  const r = Math.max(1, Math.ceil(sigmaPts * 2.5));
+  const k: number[] = [];
+  for (let i = -r; i <= r; i++) k.push(Math.exp(-(i * i) / (2 * sigmaPts * sigmaPts)));
+  const out = new Array<number>(pts.length);
+  for (let i = 0; i < n; i++) {
+    if (!closed && (i === 0 || i === n - 1)) {
+      out[i * 2] = pts[i * 2];
+      out[i * 2 + 1] = pts[i * 2 + 1];
+      continue;
+    }
+    // U otevřeného tahu se okno u konců zúží, aby tah nezkracovalo.
+    const rr = closed ? r : Math.min(r, i, n - 1 - i);
+    let sx = 0;
+    let sy = 0;
+    let sw = 0;
+    for (let j = -rr; j <= rr; j++) {
+      const idx = closed ? (i + j + n) % n : i + j;
+      const wgt = k[j + r];
+      sx += pts[idx * 2] * wgt;
+      sy += pts[idx * 2 + 1] * wgt;
+      sw += wgt;
+    }
+    out[i * 2] = sx / sw;
+    out[i * 2 + 1] = sy / sw;
+  }
+  return out;
+}

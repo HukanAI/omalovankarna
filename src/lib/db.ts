@@ -9,6 +9,8 @@ export interface PageRecord {
   updatedAt: number;
   level: Level;
   detail: number;
+  /** Styl čar (starší záznamy nemají = tuš). */
+  style?: 'pen' | 'ink';
   /** Body výběru hlavní postavy (null = celá fotka). */
   selection: SamPoint[] | null;
   drawing: Drawing;

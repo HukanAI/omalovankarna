@@ -147,7 +147,7 @@ const api = {
     const res = await studio.select(points);
     // Kopie: originál masky si Studio drží pro kreslení, přenesený buffer by se vyprázdnil.
     const data = res.mask.data.slice();
-    const out = { w: res.mask.w, h: res.mask.h, data, score: res.score, coverage: res.coverage };
+    const out = { w: res.mask.w, h: res.mask.h, data, score: res.score, coverage: res.coverage, confident: res.confident };
     return Comlink.transfer(out, [data.buffer]);
   },
 

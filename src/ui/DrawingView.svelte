@@ -63,7 +63,7 @@
     return () => clearTimeout(id);
   });
 
-  const maskWidth = $derived(drawing.lineWidth * 3.2 + 3);
+  const maskWidth = $derived(drawing.lineWidth * 3.5 + 4);
 </script>
 
 <svg
@@ -93,14 +93,9 @@
       </mask>
     </defs>
   {/if}
-  <g class="ink">
-    <path d={rings} fill-rule="evenodd" mask={done ? undefined : `url(#${uid}-m)`} />
-    <g
-      fill="none"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      class:late={!done}
-    >
+  <g class="ink" mask={done ? undefined : `url(#${uid}-m)`}>
+    <path d={rings} fill-rule="evenodd" />
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
       {#each groups as g (g.width)}
         <path d={g.d} stroke-width={g.width} />
       {/each}
@@ -133,22 +128,9 @@
       stroke-dashoffset: 0;
     }
   }
-  /* Obrys a dotažené mezery naskočí až ke konci kresby. */
-  .late {
-    opacity: 0;
-    animation: appear 500ms 1900ms var(--ease) forwards;
-  }
-  @keyframes appear {
-    to {
-      opacity: 1;
-    }
-  }
   @media (prefers-reduced-motion: reduce) {
     .draw {
       stroke-dashoffset: 0;
-    }
-    .late {
-      opacity: 1;
     }
   }
 </style>

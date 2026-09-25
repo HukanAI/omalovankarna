@@ -20,7 +20,6 @@ await page.waitForTimeout(2600);
 await shot('01-uvod');
 
 await page.locator('input[type=file]:not([capture])').setInputFiles(join(root, 'tests/fixtures/photos/horse.jpg'));
-await page.getByText('Jen hlavní postava').click();
 await page.getByRole('radio', { name: 'Přidat' }).waitFor({ timeout: 90_000 });
 await page.waitForTimeout(400);
 await shot('02-vyber-postavy');

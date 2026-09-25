@@ -299,3 +299,19 @@ export function removeWeak(g: Graph, strength: { w: number; h: number; data: Flo
     if (s < need) e.alive = false;
   }
 }
+
+/**
+ * Vrátí smazané úseky, které spojují dva ponechané tahy – typicky slabší
+ * kousek obrysu mezi dvěma silnými. Díky tomu se obrysy netrhají.
+ */
+export function restoreConnectors(g: Graph, maxLen: number, rounds = 2): void {
+  for (let r = 0; r < rounds; r++) {
+    const revive: GraphEdge[] = [];
+    for (const e of g.edges) {
+      if (e.alive || e.closed || e.a < 0 || e.b < 0 || e.a === e.b || e.len > maxLen) continue;
+      if (degree(g, e.a) >= 1 && degree(g, e.b) >= 1) revive.push(e);
+    }
+    if (!revive.length) break;
+    for (const e of revive) e.alive = true;
+  }
+}
