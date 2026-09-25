@@ -84,27 +84,68 @@ export class Studio {
   }
 
   /**
-   * Vybere objekt podle bodů (nebo automaticky podle středu snímku).
+   * Vybere objekt podle bodů. Bez bodů zkusí několik míst kolem středu
+   * a vybere masku, na které se kandidáti shodnou (celá postava, ne jen
+   * zip bundy), a která není pozadím (nedotýká se okrajů).
    * Vrací masku v rozlišení pracovního obrázku.
    */
   async select(points: SamPoint[]): Promise<{ mask: Mask; score: number; coverage: number }> {
     if (!this.img) throw new Error('Není nahraná fotka.');
     await this.prepareSelection();
     const { decoder } = await this.models.sam();
-    const auto = points.length === 0;
-    const pts = auto ? [{ x: 0.5, y: 0.5, positive: true }] : points;
-    const prompt = samPromptInputs(pts, this.samPrep!);
-    const out = await decoder.run({
-      input_points: prompt.points,
-      input_labels: prompt.labels,
-      image_embeddings: this.embeddings!.image_embeddings,
-      image_positional_embeddings: this.embeddings!.image_positional_embeddings,
-    });
-    const res = samMask(out.pred_masks.data, out.iou_scores.data, this.samPrep!, this.img.w, this.img.h, pts.length === 1);
+    const img = this.img;
+    const decode = async (pts: SamPoint[]) => {
+      const prompt = samPromptInputs(pts, this.samPrep!);
+      const out = await decoder.run({
+        input_points: prompt.points,
+        input_labels: prompt.labels,
+        image_embeddings: this.embeddings!.image_embeddings,
+        image_positional_embeddings: this.embeddings!.image_positional_embeddings,
+      });
+      return { pred: out.pred_masks.data, iou: out.iou_scores.data, single: pts.length === 1 };
+    };
+
+    let chosen: Awaited<ReturnType<typeof decode>>;
+    if (points.length) {
+      chosen = await decode(points);
+    } else {
+      const spots = [
+        [0.5, 0.5],
+        [0.5, 0.36],
+        [0.5, 0.64],
+        [0.38, 0.5],
+        [0.62, 0.5],
+      ];
+      const outs = [];
+      for (const [x, y] of spots) outs.push(await decode([{ x, y, positive: true }]));
+      // Hodnocení v malém rozlišení.
+      const sw = 160;
+      const sh = Math.max(1, Math.round((sw * img.h) / img.w));
+      const small = outs.map((o) => samMask(o.pred, o.iou, this.samPrep!, sw, sh, true));
+      const cov = small.map((m) => count(m.mask) / (sw * sh));
+      const border = small.map((m) => borderRatio(m.mask));
+      const valid = small.map((_, i) => cov[i] > 0.015 && cov[i] < 0.8 && border[i] < 0.3);
+      let best = 0;
+      let bestScore = -Infinity;
+      small.forEach((m, i) => {
+        if (!valid[i]) return;
+        let support = 0;
+        small.forEach((o, j) => {
+          if (j !== i && valid[j]) support += maskIoU(m.mask, o.mask);
+        });
+        const score = support + 0.5 * m.score + Math.min(cov[i], 0.3);
+        if (score > bestScore) {
+          bestScore = score;
+          best = i;
+        }
+      });
+      chosen = outs[best];
+    }
+    const res = samMask(chosen.pred, chosen.iou, this.samPrep!, img.w, img.h, chosen.single);
     this.mask = res.mask;
     // Změna výběru znehodnotí kresby, které s ním počítaly.
     for (const key of [...this.inkCache.keys()]) if (key.endsWith(':s')) this.inkCache.delete(key);
-    return { ...res, coverage: count(res.mask) / (this.img.w * this.img.h) };
+    return { ...res, coverage: count(res.mask) / (img.w * img.h) };
   }
 
   clearSelection(): void {
@@ -149,6 +190,26 @@ export class Studio {
     const result = vectorize(cached.ink, { level: opts.level, detail: opts.detail, subject: cached.subject });
     return { ...result, box: cached.box, fallback: cached.fallback };
   }
+}
+
+function maskIoU(a: Mask, b: Mask): number {
+  let inter = 0;
+  let union = 0;
+  for (let i = 0; i < a.data.length; i++) {
+    const x = a.data[i];
+    const y = b.data[i];
+    inter += x & y;
+    union += x | y;
+  }
+  return union ? inter / union : 0;
+}
+
+/** Podíl okrajových pixelů obrázku, které maska pokrývá (pozadí jich pokrývá hodně). */
+function borderRatio(m: Mask): number {
+  let n = 0;
+  for (let x = 0; x < m.w; x++) n += m.data[x] + m.data[(m.h - 1) * m.w + x];
+  for (let y = 0; y < m.h; y++) n += m.data[y * m.w] + m.data[y * m.w + m.w - 1];
+  return n / (2 * (m.w + m.h));
 }
 
 function full(img: RGBA): Box {

@@ -100,3 +100,16 @@ describe.runIf(haveModels)('Studio se skutečnými modely', () => {
     expect(fillableRegions(res.drawing).closed).toBeGreaterThan(0);
   });
 });
+
+describe.runIf(haveModels)('automatický výběr postavy', () => {
+  it('u holčičky vybere celou postavu, ne jen zip bundy', async () => {
+    const lineart = nodeRunner(model('lineart.onnx'));
+    const encoder = nodeRunner(model('sam-encoder.onnx'));
+    const decoder = nodeRunner(model('sam-decoder.onnx'));
+    const studio = new Studio({ lineart, sam: async () => ({ encoder: await encoder(), decoder: await decoder() }) });
+    studio.setImage(await photo('girl'));
+    const sel = await studio.select([]);
+    expect(sel.coverage).toBeGreaterThan(0.2);
+    expect(sel.coverage).toBeLessThan(0.5);
+  });
+});
