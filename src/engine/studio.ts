@@ -17,6 +17,7 @@ import { LEVELS, type Level } from './presets';
 import { abstractImage, resizeRGBA } from './raster';
 import { count } from './mask';
 import { vectorize, type VectorizeResult } from './vectorize';
+import { meshDecode, meshInput, nms, roiFromBox, roiFromMesh, yunetDecode, yunetInput, type FaceBox } from './face';
 import type { Mask, Plane, RGBA } from './types';
 
 export interface TensorOut {
@@ -32,6 +33,8 @@ export interface Runner {
 export interface ModelProvider {
   lineart(): Promise<Runner>;
   sam(): Promise<{ encoder: Runner; decoder: Runner }>;
+  /** Detektor obličejů a síť bodů obličeje (volitelné). */
+  face?(): Promise<{ detector: Runner; mesh: Runner }>;
 }
 
 export type Stage = 'prepare' | 'lines' | 'clean';
@@ -60,7 +63,10 @@ export class Studio {
   private samPrep: SamPrepared | null = null;
   private embeddings: Record<string, TensorOut> | null = null;
   private mask: Mask | null = null;
-  private inkCache = new Map<string, { ink: Plane; subject: Mask | null; box: Box; fallback: boolean }>();
+  private inkCache = new Map<
+    string,
+    { ink: Plane; subject: Mask | null; box: Box; fallback: boolean; faces: Float32Array[]; faceBoxes: number[][] }
+  >();
 
   constructor(private models: ModelProvider) {}
 
@@ -153,6 +159,76 @@ export class Studio {
     return { ...res, coverage: count(res.mask) / (img.w * img.h), confident };
   }
 
+  /**
+   * Body obličejů ve výřezu (v jeho pixelech). Chyba modelu kreslení nezastaví –
+   * obličeje se pak jen nedokreslí.
+   */
+  private async findFaces(img: RGBA): Promise<{ meshes: Float32Array[]; unsure: FaceBox[] }> {
+    const none = { meshes: [], unsure: [] };
+    if (!this.models.face) return none;
+    try {
+      const { detector, mesh } = await this.models.face();
+      const boxes = [];
+      // Dvě měřítka: běžné obličeje i detail přes celou fotku.
+      for (const fit of [640, 280]) {
+        const { input, scale } = yunetInput(img, fit);
+        const out = await detector.run({ input });
+        boxes.push(...yunetDecode(out, scale));
+      }
+      const faces: Float32Array[] = [];
+      const unsure: FaceBox[] = [];
+      for (const b of nms(boxes).slice(0, 8)) {
+        let roi = roiFromBox(b);
+        let pts: Float32Array | null = null;
+        // Druhý průchod s výřezem podle bodů z prvního je přesnější.
+        for (let pass = 0; pass < 2; pass++) {
+          const r = await mesh.run({ input_12: meshInput(img, roi) });
+          // První průchod jen zpřesní výřez, o přijetí rozhoduje až druhý.
+          pts = meshDecode(r.Identity.data, r.Identity_1.data[0], roi, pass === 0 ? 0 : 0.15);
+          if (!pts) break;
+          roi = roiFromMesh(pts);
+        }
+        if (pts) faces.push(pts);
+        else unsure.push(b);
+      }
+      return { meshes: faces, unsure };
+    } catch (err) {
+      console.warn('Obličeje se nepodařilo najít.', err);
+      return none;
+    }
+  }
+
+  /** Vloží do mapy inkoustu detailní kresbu jednoho obličeje. */
+  private async faceDetail(crop: RGBA, b: FaceBox, ink: Plane, sx: number, sy: number): Promise<void> {
+    const side = Math.max(b.w, b.h) * 1.5;
+    const x0 = Math.max(0, Math.round(b.x + b.w / 2 - side / 2));
+    const y0 = Math.max(0, Math.round(b.y + b.h / 2 - side / 2));
+    const x1 = Math.min(crop.w, Math.round(b.x + b.w / 2 + side / 2));
+    const y1 = Math.min(crop.h, Math.round(b.y + b.h / 2 + side / 2));
+    if (x1 - x0 < 16 || y1 - y0 < 16) return;
+    const part = cropRGBA(crop, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+    const { w: fw, h: fh } = lineartSize(part.w, part.h, 320);
+    const net = await this.models.lineart();
+    const out = await net.run({ input: lineartInput(resizeRGBA(part, fw, fh)) });
+    const face = lineartToInk(out.output.data, fw, fh);
+    // Zpět do souřadnic kresby s měkkým přechodem k okrajům výřezu.
+    const dx0 = Math.floor(x0 * sx);
+    const dy0 = Math.floor(y0 * sy);
+    const dx1 = Math.min(ink.w, Math.ceil(x1 * sx));
+    const dy1 = Math.min(ink.h, Math.ceil(y1 * sy));
+    for (let y = dy0; y < dy1; y++) {
+      const v = ((y + 0.5) / sy - y0) / (y1 - y0);
+      for (let x = dx0; x < dx1; x++) {
+        const u = ((x + 0.5) / sx - x0) / (x1 - x0);
+        if (u < 0 || v < 0 || u >= 1 || v >= 1) continue;
+        const edge = Math.min(u, v, 1 - u, 1 - v) / 0.15;
+        const val = face.data[Math.min(fh - 1, Math.floor(v * fh)) * fw + Math.min(fw - 1, Math.floor(u * fw))];
+        const i = y * ink.w + x;
+        ink.data[i] = Math.max(ink.data[i], val * Math.min(1, edge));
+      }
+    }
+  }
+
   clearSelection(): void {
     this.mask = null;
   }
@@ -190,11 +266,35 @@ export class Studio {
         fallback = true;
       }
       const subject = useSubject ? cropMaskTo(this.mask!, box, w, h) : null;
-      cached = { ink, subject, box, fallback };
+      const found = await this.findFaces(crop);
+      const sx = w / crop.w;
+      const sy = h / crop.h;
+      // Obličej z profilu: rysy z bodů kreslit nejde, tak aspoň necháme síť
+      // nakreslit obličej zvlášť v plném rozlišení (bez zjednodušení fotky).
+      if (!fallback) {
+        for (const b of found.unsure) await this.faceDetail(crop, b, ink, sx, sy);
+      }
+      const faces = found.meshes.map((f) => {
+        const out = new Float32Array(f.length);
+        for (let i = 0; i < f.length; i += 2) {
+          out[i] = f[i] * sx;
+          out[i + 1] = f[i + 1] * sy;
+        }
+        return out;
+      });
+      const faceBoxes = found.unsure.map((b) => [b.x * sx, b.y * sy, b.w * sx, b.h * sy]);
+      cached = { ink, subject, box, fallback, faces, faceBoxes };
       this.inkCache.set(key, cached);
     }
     onStage?.('clean');
-    const result = vectorize(cached.ink, { level: opts.level, detail: opts.detail, subject: cached.subject, style: opts.style });
+    const result = vectorize(cached.ink, {
+      level: opts.level,
+      detail: opts.detail,
+      subject: cached.subject,
+      style: opts.style,
+      faces: cached.faces,
+      faceBoxes: cached.faceBoxes,
+    });
     return { ...result, box: cached.box, fallback: cached.fallback };
   }
 }

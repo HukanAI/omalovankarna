@@ -61,7 +61,8 @@
         Fotka se nejdřív zjednoduší, aby zmizely drobné textury jako srst nebo tráva. Potom ji překreslí
         neuronová síť, která se učila od ilustrátorů. Čáry pak projdou úpravou, jakou by udělal kreslíř:
         zbytečné tahy zmizí, mezery se dotáhnou, aby plochy šly vybarvit kyblíkem, a vše se převede na hladké
-        křivky, které jsou ostré i při tisku.
+        křivky, které jsou ostré i při tisku. Obličeje aplikace najde zvlášť a oči, nos a pusu dokreslí
+        čistými tahy, jak to dělají ilustrátoři omalovánek.
       </p>
       {#if backend}<p class="muted">Na tomto zařízení počítá: {backend}.</p>{/if}
     </section>
@@ -81,6 +82,7 @@
       <p class="credits">
         Kreslicí síť <i>Informative Drawings</i> (C. Chan, F. Durand, P. Isola, MIT, licence MIT).<br />
         Výběr postavy <i>SlimSAM</i> (Z. Chen a kol., licence Apache 2.0) vycházející ze <i>Segment Anything</i> (Meta AI).<br />
+        Obličeje: detektor <i>YuNet</i> (W. Wu, H. Peng, S. Yu, MIT) a <i>MediaPipe Face Mesh</i> (Google, Apache 2.0).<br />
         Výpočty běží v <i>ONNX Runtime Web</i> (Microsoft, MIT).<br />
         Písma <i>Fraunces</i> a <i>Atkinson Hyperlegible Next</i> (SIL Open Font License).
       </p>

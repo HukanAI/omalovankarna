@@ -26,6 +26,18 @@ const MODELS = [
     url: 'https://huggingface.co/Xenova/slimsam-77-uniform/resolve/5850ab45f587c112167512ffef949107115e26a0/onnx/prompt_encoder_mask_decoder_quantized.onnx',
     sha256: 'cb90b279f549d2cab7fd6e20c38522438c65d84bdcca3d2a764cff7d857fdce2',
   },
+  {
+    file: 'face-detect.onnx',
+    // YuNet (Wu, Peng, Yu 2023), MIT
+    url: 'https://huggingface.co/opencv/face_detection_yunet/resolve/3cc26e7f1014a5ee5d74a42acee58bafc9d0a310/face_detection_yunet_2023mar.onnx',
+    sha256: '8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4',
+  },
+  {
+    file: 'face-mesh.onnx',
+    // MediaPipe Face Mesh V2 (Google), Apache-2.0, převod do ONNX
+    url: 'https://huggingface.co/naklitechie/face-landmarks-onnx/resolve/575c33816c840c5b156398adb485e4f8d138adc2/face_landmarks.onnx',
+    sha256: 'f38c3321ceffbc9e95103480ad38cc3f52e7e1bde2bcee7cd9355d0b9138ac0c',
+  },
 ];
 
 const sha = (buf) => createHash('sha256').update(buf).digest('hex');

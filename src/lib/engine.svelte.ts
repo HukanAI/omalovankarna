@@ -18,6 +18,8 @@ export const downloads = $state<Record<DownloadKey, Download>>({
   lineart: { loaded: 0, total: MODEL_FILES.lineart.bytes, active: false, seen: false },
   samEncoder: { loaded: 0, total: MODEL_FILES.samEncoder.bytes, active: false, seen: false },
   samDecoder: { loaded: 0, total: MODEL_FILES.samDecoder.bytes, active: false, seen: false },
+  faceDetect: { loaded: 0, total: MODEL_FILES.faceDetect.bytes, active: false, seen: false },
+  faceMesh: { loaded: 0, total: MODEL_FILES.faceMesh.bytes, active: false, seen: false },
 });
 
 export function engine(): Comlink.Remote<EngineApi> {

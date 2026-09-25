@@ -102,7 +102,11 @@ const sam = memo(async () => {
   const [encoder, decoder] = await Promise.all([createRunner('samEncoder'), createRunner('samDecoder')]);
   return { encoder, decoder };
 });
-const provider: ModelProvider = { lineart, sam };
+const face = memo(async () => {
+  const [detector, mesh] = await Promise.all([createRunner('faceDetect'), createRunner('faceMesh')]);
+  return { detector, mesh };
+});
+const provider: ModelProvider = { lineart, sam, face };
 const studio = new Studio(provider);
 
 function bitmapToRGBA(bmp: ImageBitmap): RGBA {
@@ -132,8 +136,9 @@ const api = {
   },
 
   /** Připraví modely dopředu (zatímco si uživatel prohlíží fotku). */
-  async warmup(which: 'lineart' | 'sam'): Promise<void> {
+  async warmup(which: 'lineart' | 'sam' | 'face'): Promise<void> {
     if (which === 'lineart') await lineart();
+    else if (which === 'face') await face();
     else await sam();
   },
 

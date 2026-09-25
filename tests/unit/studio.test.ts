@@ -113,3 +113,38 @@ describe.runIf(haveModels)('automatický výběr postavy', () => {
     expect(sel.coverage).toBeLessThan(0.5);
   });
 });
+
+describe.runIf(haveModels && existsSync(model('face-mesh.onnx')))('obličeje', () => {
+  const makeStudio = () => {
+    const encoder = nodeRunner(model('sam-encoder.onnx'));
+    const decoder = nodeRunner(model('sam-decoder.onnx'));
+    const detector = nodeRunner(model('face-detect.onnx'));
+    const mesh = nodeRunner(model('face-mesh.onnx'));
+    return new Studio({
+      lineart: nodeRunner(model('lineart.onnx')),
+      sam: async () => ({ encoder: await encoder(), decoder: await decoder() }),
+      face: async () => ({ detector: await detector(), mesh: await mesh() }),
+    });
+  };
+
+  it('portrét dostane oči se zorničkami, obočí, nos a ústa', async () => {
+    const studio = makeStudio();
+    studio.setImage(await photo('face-hat'));
+    const res = await studio.draw({ level: 'skolaci', detail: 0.5, subject: false });
+    // Dvě vyplněné zorničky (kruhy) a rysy jako tahy.
+    expect(res.drawing.rings.length).toBeGreaterThanOrEqual(2);
+    expect(res.drawing.strokes.length).toBeGreaterThan(10);
+  });
+
+  it('na fotce psa žádný obličej nevymyslí', async () => {
+    const studio = makeStudio();
+    studio.setImage(await photo('dog'));
+    const res = await studio.draw({ level: 'skolaci', detail: 0.5, subject: false });
+    const withoutFace = await (async () => {
+      const s2 = new Studio({ lineart: nodeRunner(model('lineart.onnx')), sam: async () => ({}) as never });
+      s2.setImage(await photo('dog'));
+      return s2.draw({ level: 'skolaci', detail: 0.5, subject: false });
+    })();
+    expect(res.drawing.strokes.length).toBe(withoutFace.drawing.strokes.length);
+  });
+});

@@ -56,7 +56,7 @@
   let colored = $state<Blob | null>(null);
   let exportOpen = $state(false);
 
-  const dlLines = $derived(downloadProgress(['runtime', 'lineart']));
+  const dlLines = $derived(downloadProgress(['runtime', 'lineart', 'faceDetect', 'faceMesh']));
   const dlSam = $derived(downloadProgress(['samEncoder', 'samDecoder']));
 
   function readSubjectPref(): boolean {
@@ -125,6 +125,7 @@
     // Kreslíře připravíme hned, ať je hotový, než si uživatel vybere úroveň.
     engine()
       .warmup('lineart')
+      .then(() => engine().warmup('face'))
       .catch(() => {});
   }
 

@@ -1,10 +1,11 @@
 import { bridgeGaps, graphToPolys, polyLength, resample, simplify, smooth, smoothGaussian, type Poly } from './strokes';
-import { mergeThroughNodes, pruneSpurs, removeShortGroups, removeWeak, restoreConnectors, traceSkeleton, type Graph } from './graph';
+import { mergeThroughNodes, pruneSpurs, removeShortGroups, removeWeak, restoreConnectors, reviveInZone, traceSkeleton, type Graph } from './graph';
 import { boundary, components, fillHoles, hysteresis, removeSmall } from './mask';
 import { blur, distanceTransform, quantile } from './raster';
 import { isoContours, ringArea } from './contours';
 import { LEVELS, PRINT_LONG_MM, type Level } from './presets';
 import { thin } from './thin';
+import { drawFace, type FaceArt } from './face';
 import type { Drawing, Mask, Plane, Stroke } from './types';
 
 export interface VectorizeOptions {
@@ -18,6 +19,10 @@ export interface VectorizeOptions {
    * 'ink' = obrysy inkoustu s proměnnou tloušťkou (jako kresba tuší).
    */
   style?: 'pen' | 'ink';
+  /** Body obličejů (Face Mesh) v souřadnicích kresby. */
+  faces?: Float32Array[];
+  /** Obličeje, u kterých body nejsou spolehlivé (profil) – [x, y, w, h] v kresbě. */
+  faceBoxes?: number[][];
 }
 
 export interface VectorizeResult {
@@ -53,6 +58,12 @@ export function vectorize(ink: Plane, opts: VectorizeOptions): VectorizeResult {
   const peak = Math.max(0.2, quantile(src, 0.995));
   for (let i = 0; i < src.data.length; i++) src.data[i] = Math.min(1, src.data[i] / peak);
 
+  // Kopie před potlačením u obrysu – v chráněných obličejích se použije ta.
+  let subjectInk: Float32Array | null = null;
+  if (opts.subject) {
+    subjectInk = src.data.slice();
+    for (let i = 0; i < subjectInk.length; i++) if (!opts.subject.data[i]) subjectInk[i] = 0;
+  }
   if (opts.subject) {
     // Mimo objekt se nekreslí a těsně u jeho obrysu také ne – obrys
     // nakreslíme zvlášť jednou souvislou čarou, jinak by vznikly dvojité linky.
@@ -63,6 +74,30 @@ export function vectorize(ink: Plane, opts: VectorizeOptions): VectorizeResult {
       if (!opts.subject.data[i]) src.data[i] = 0;
       else if (edgeDist[i] < outer) src.data[i] *= Math.max(0, (edgeDist[i] - inner) / (outer - inner));
     }
+  }
+
+  // Obličeje: uvnitř se čáry sítě nahradí čistě nakreslenými rysy.
+  const penWidth = (preset.lineMm * L) / PRINT_LONG_MM;
+  const faceArt: FaceArt[] = (opts.faces ?? []).map((f) => drawFace(f, penWidth, opts.level));
+  for (const art of faceArt) {
+    if (!art.region) continue;
+    const m = blur(maskToPlane(fillPolygon(art.region, w, h)), 1.5 * pxScale);
+    for (let i = 0; i < src.data.length; i++) src.data[i] *= 1 - Math.min(1, m.data[i] * 1.6);
+  }
+
+  // Obličeje, kde rysy z bodů kreslit nejde: chráněná oblast, v níž se čáry sítě nemažou.
+  const protectedFaces = (opts.faceBoxes ?? []).concat(
+    faceArt.map((a, i) => (a.region ? null : boxOf(opts.faces![i]))).filter((b): b is number[] => b !== null),
+  );
+  let zone: Uint8Array | null = null;
+  if (protectedFaces.length) {
+    zone = new Uint8Array(w * h);
+    for (const [bx, by, bw, bh] of protectedFaces) {
+      for (let y = Math.max(0, Math.floor(by)); y < Math.min(h, by + bh); y++) {
+        for (let x = Math.max(0, Math.floor(bx)); x < Math.min(w, bx + bw); x++) zone[y * w + x] = 1;
+      }
+    }
+    if (subjectInk) for (let i = 0; i < zone.length; i++) if (zone[i]) src.data[i] = subjectInk[i];
   }
 
   let bin = hysteresis(src, preset.lo + thrShift, preset.hi + thrShift);
@@ -76,6 +111,10 @@ export function vectorize(ink: Plane, opts: VectorizeOptions): VectorizeResult {
   pruneSpurs(graph, preset.spur * lenFactor * L, 2);
   removeShortGroups(graph, preset.minGroup * lenFactor * L);
   restoreConnectors(graph, 0.08 * L);
+  if (zone) {
+    reviveInZone(graph, zone, w, 2.5 * pxScale);
+    pruneSpurs(graph, 1.5 * pxScale, 1);
+  }
   mergeThroughNodes(graph);
 
   // Typická tloušťka čáry – použije se pro dotažené mezery.
@@ -86,7 +125,7 @@ export function vectorize(ink: Plane, opts: VectorizeOptions): VectorizeResult {
   const features = findFeatures(bin, src, L);
 
   if ((opts.style ?? 'pen') === 'pen') {
-    return penDrawing(graph, features, src, opts, preset, w, h, L, pxScale);
+    return withFaces(penDrawing(graph, features, src, opts, preset, w, h, L, pxScale, zone), faceArt, penWidth);
   }
 
   // ——— Inkoust jen v okolí ponechaných tahů → hladké obrysy ———
@@ -140,11 +179,73 @@ export function vectorize(ink: Plane, opts: VectorizeOptions): VectorizeResult {
     .concat(strokes.filter((s) => s.weight > 1));
   reveal.sort((a, b) => topOf(a) - topOf(b));
 
-  return {
-    drawing: { w, h, rings, strokes, lineWidth },
-    reveal,
-    stats: { rings: rings.length, strokes: strokes.length, bridges: bridges.length },
-  };
+  return withFaces(
+    {
+      drawing: { w, h, rings, strokes, lineWidth },
+      reveal,
+      stats: { rings: rings.length, strokes: strokes.length, bridges: bridges.length },
+    },
+    faceArt,
+    penWidth,
+  );
+}
+
+/**
+ * Přidá rysy obličejů. Váhy tahů jsou vztažené k perové tloušťce `penWidth`,
+ * kresba ale může mít jinou základní tloušťku (styl tuš) – proto přepočet.
+ */
+function withFaces(res: VectorizeResult, arts: FaceArt[], penWidth: number): VectorizeResult {
+  const d = res.drawing;
+  const k = penWidth / d.lineWidth;
+  for (const art of arts) {
+    for (const s of art.strokes) {
+      const st: Stroke = { pts: round(s.pts), closed: s.closed, weight: Math.round(s.weight * k * 100) / 100 };
+      d.strokes.push(st);
+      res.reveal.push(st);
+    }
+    for (const r of art.rings) d.rings.push(round(r));
+  }
+  return res;
+}
+
+function boxOf(pts: Float32Array): number[] {
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (let i = 0; i < 468; i++) {
+    x0 = Math.min(x0, pts[i * 2]);
+    x1 = Math.max(x1, pts[i * 2]);
+    y0 = Math.min(y0, pts[i * 2 + 1]);
+    y1 = Math.max(y1, pts[i * 2 + 1]);
+  }
+  return [x0, y0, x1 - x0, y1 - y0];
+}
+
+/** Vyplní polygon do masky (střed pixelu uvnitř = 1). */
+function fillPolygon(poly: number[], w: number, h: number): Mask {
+  const data = new Uint8Array(w * h);
+  const n = poly.length / 2;
+  let y0 = h;
+  let y1 = 0;
+  for (let i = 0; i < n; i++) {
+    y0 = Math.min(y0, poly[i * 2 + 1]);
+    y1 = Math.max(y1, poly[i * 2 + 1]);
+  }
+  for (let y = Math.max(0, Math.floor(y0)); y < Math.min(h, Math.ceil(y1)); y++) {
+    const yy = y + 0.5;
+    const xs: number[] = [];
+    for (let i = 0, j = n - 1; i < n; j = i++) {
+      const ya = poly[j * 2 + 1];
+      const yb = poly[i * 2 + 1];
+      if (ya > yy !== yb > yy) xs.push(poly[j * 2] + ((yy - ya) / (yb - ya)) * (poly[i * 2] - poly[j * 2]));
+    }
+    xs.sort((a, b) => a - b);
+    for (let q = 0; q + 1 < xs.length; q += 2) {
+      for (let x = Math.max(0, Math.ceil(xs[q] - 0.5)); x < Math.min(w, xs[q + 1] - 0.5); x++) data[y * w + x] = 1;
+    }
+  }
+  return { w, h, data };
 }
 
 /**
@@ -162,6 +263,7 @@ function penDrawing(
   h: number,
   L: number,
   pxScale: number,
+  zone: Uint8Array | null,
 ): VectorizeResult {
   const lineWidth = (preset.lineMm * L) / PRINT_LONG_MM;
   const step = 1.5 * pxScale;
@@ -173,6 +275,8 @@ function penDrawing(
   if (opts.subject) {
     outline = subjectOutline(opts.subject, w, h, L, pxScale, step);
     const edgeDist = distanceTransform(boundary(opts.subject));
+    // V chráněném obličeji se čáry u obrysu nemažou (tvář z profilu leží přímo na něm).
+    if (zone) for (let i = 0; i < zone.length; i++) if (zone[i]) edgeDist[i] = Infinity;
     polys = trimNear(polys, edgeDist, w, h, 7.5 * pxScale, preset.spur * L);
     // Krátké úlomky, které jen kopírují obrys o kus dál, by vytvořily úzké
     // kapsy, které se špatně vybarvují.

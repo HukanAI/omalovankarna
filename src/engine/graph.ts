@@ -315,3 +315,17 @@ export function restoreConnectors(g: Graph, maxLen: number, rounds = 2): void {
     for (const e of revive) e.alive = true;
   }
 }
+
+/**
+ * V chráněné oblasti (obličej, u kterého nejde kreslit rysy z bodů) vrátí
+ * i krátké a slabší tahy – oči a ústa jsou malé, ale nesmí zmizet.
+ */
+export function reviveInZone(g: Graph, zone: Uint8Array, w: number, minLen: number): void {
+  for (const e of g.edges) {
+    if (e.alive || e.len < minLen) continue;
+    let inside = 0;
+    const n = e.pts.length / 2;
+    for (let i = 0; i < n; i++) inside += zone[Math.round(e.pts[i * 2 + 1]) * w + Math.round(e.pts[i * 2])] ? 1 : 0;
+    if (inside / n > 0.6) e.alive = true;
+  }
+}

@@ -137,3 +137,14 @@ test('u fotky bez jasné postavy se kreslí celá', async ({ page }) => {
   await expect(page.getByText('nakreslím ji celou')).toBeVisible({ timeout: 90_000 });
   await expect(page.getByRole('switch')).not.toBeChecked();
 });
+
+test('portrét: obličej dostane oči, nos a pusu', async ({ page }) => {
+  await page.goto('./');
+  await pickPhoto(page, 'face-hat');
+  await expect(page.getByRole('button', { name: 'Nakreslit' })).toBeEnabled({ timeout: 90_000 });
+  await page.getByRole('button', { name: 'Nakreslit' }).click();
+  await waitForDrawing(page);
+  // Vyplněné zorničky jsou v cestě plných tvarů (podcesty začínají „M“).
+  const fills = await page.locator('svg.drawing .ink > path').first().getAttribute('d');
+  expect((fills ?? '').split('M').length - 1).toBeGreaterThanOrEqual(2);
+});

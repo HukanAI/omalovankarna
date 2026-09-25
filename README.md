@@ -58,6 +58,9 @@ fotka ─► zjednodušení (guided filter) ─► kreslicí síť ─► čišt
    splajny – čáry si drží přirozenou tloušťku a jsou ostré v jakékoli velikosti.
 5. **Výběr postavy**: *SlimSAM* (Segment Anything zmenšený na 14 MB) s automatickým odhadem
    a doladěním klepnutím.
+6. **Obličeje**: detektor *YuNet* najde tváře a *MediaPipe Face Mesh* v nich 478 bodů. Z nich se
+   oči, obočí, nos, rty a brada nakreslí čistými tahy ve stylu omalovánek. U hlavy z profilu se
+   obličej nechá překreslit síti zvlášť v plném rozlišení.
 
 Vše běží ve Web Workeru přes [ONNX Runtime Web](https://onnxruntime.ai/). Service worker
 zajišťuje offline režim a izolaci originu, díky které může výpočet běžet ve více vláknech.
@@ -95,6 +98,8 @@ Kód aplikace je pod licencí [MIT](LICENSE).
 - *Informative Drawings* – Caroline Chan, Frédo Durand, Phillip Isola (MIT), převod do ONNX
   [rocca/informative-drawings-line-art-onnx](https://huggingface.co/rocca/informative-drawings-line-art-onnx)
 - *SlimSAM* – Zigeng Chen a kol. (Apache 2.0), ONNX [Xenova/slimsam-77-uniform](https://huggingface.co/Xenova/slimsam-77-uniform)
+- *YuNet* – Wei Wu, Hanyang Peng, Shiqi Yu (MIT), [opencv/face_detection_yunet](https://huggingface.co/opencv/face_detection_yunet)
+- *MediaPipe Face Mesh V2* – Google (Apache 2.0), ONNX [naklitechie/face-landmarks-onnx](https://huggingface.co/naklitechie/face-landmarks-onnx)
 - *ONNX Runtime Web* – Microsoft (MIT)
 - Písma *Fraunces* a *Atkinson Hyperlegible Next* (SIL Open Font License)
 - Testovací fotografie z Wikimedia Commons (CC0), viz [tests/fixtures/photos/CREDITS.md](tests/fixtures/photos/CREDITS.md)
