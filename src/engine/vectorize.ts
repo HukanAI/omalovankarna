@@ -1,6 +1,6 @@
 import { bridgeGaps, graphToPolys, simplify, smooth } from './strokes';
 import { mergeThroughNodes, pruneSpurs, removeShortGroups, removeWeak, traceSkeleton, type Graph } from './graph';
-import { boundary, fillHoles, hysteresis, removeSmall } from './mask';
+import { boundary, components, fillHoles, hysteresis, removeSmall } from './mask';
 import { blur, distanceTransform, quantile } from './raster';
 import { isoContours, ringArea } from './contours';
 import { LEVELS, type Level } from './presets';
@@ -75,8 +75,14 @@ export function vectorize(ink: Plane, opts: VectorizeOptions): VectorizeResult {
   // Typická tloušťka čáry – použije se pro dotažené mezery.
   const lineWidth = medianLineWidth(bin, graph);
 
+  // ——— Drobné výrazné tvary (oči, čumáček, knoflíky) ———
+  // Mají krátkou kostru, takže by je filtr tahů smazal – přitom nesou výraz.
+  const features = findFeatures(bin, src, L);
+
   // ——— Inkoust jen v okolí ponechaných tahů → hladké obrysy ———
-  const near = distanceTransform(rasterizeGraph(graph, w, h));
+  const kept = rasterizeGraph(graph, w, h);
+  for (let i = 0; i < kept.data.length; i++) if (features[i]) kept.data[i] = 1;
+  const near = distanceTransform(kept);
   const reach = lineWidth * 0.5 + 1.5 * pxScale;
   const field = new Float32Array(w * h);
   for (let i = 0; i < field.length; i++) {
@@ -128,6 +134,46 @@ export function vectorize(ink: Plane, opts: VectorizeOptions): VectorizeResult {
     reveal,
     stats: { rings: rings.length, strokes: strokes.length, bridges: bridges.length },
   };
+}
+
+/**
+ * Kompaktní, sytě kreslené skvrny střední velikosti – typicky oči a nos.
+ * Vrací masku jejich pixelů.
+ */
+function findFeatures(bin: Mask, strength: Plane, L: number): Uint8Array {
+  const { labels, areas } = components(bin, 1, 8);
+  const n = areas.length;
+  const x0 = new Float64Array(n).fill(Infinity);
+  const y0 = new Float64Array(n).fill(Infinity);
+  const x1 = new Float64Array(n).fill(-Infinity);
+  const y1 = new Float64Array(n).fill(-Infinity);
+  const sum = new Float64Array(n);
+  for (let i = 0; i < labels.length; i++) {
+    const l = labels[i];
+    if (l < 0) continue;
+    const x = i % bin.w;
+    const y = (i / bin.w) | 0;
+    if (x < x0[l]) x0[l] = x;
+    if (x > x1[l]) x1[l] = x;
+    if (y < y0[l]) y0[l] = y;
+    if (y > y1[l]) y1[l] = y;
+    sum[l] += strength.data[i];
+  }
+  const keep = new Uint8Array(n);
+  const minArea = (0.006 * L) ** 2;
+  const maxSize = 0.07 * L;
+  for (let l = 0; l < n; l++) {
+    const bw = x1[l] - x0[l] + 1;
+    const bh = y1[l] - y0[l] + 1;
+    const fill = areas[l] / (bw * bh);
+    const aspect = Math.max(bw, bh) / Math.min(bw, bh);
+    if (areas[l] >= minArea && Math.max(bw, bh) <= maxSize && aspect < 3 && fill > 0.3 && sum[l] / areas[l] > 0.55) {
+      keep[l] = 1;
+    }
+  }
+  const out = new Uint8Array(labels.length);
+  for (let i = 0; i < labels.length; i++) if (labels[i] >= 0 && keep[labels[i]]) out[i] = 1;
+  return out;
 }
 
 function maskToPlane(m: Mask): Plane {
